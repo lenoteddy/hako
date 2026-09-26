@@ -47,7 +47,7 @@ export default function ClaimName({ existing, onDone }) {
 		<section className="panel claim">
 			<h1>{resuming ? "Finish setting up your name" : "Claim your Hako name"}</h1>
 			<p className="muted">
-				{resuming ? "Your name is registered. A couple of steps are left before you can add tasks." : "This becomes the home for your tasks. You own it, and Hako can't take it back."}
+				{resuming ? "Your name is registered. A couple of steps are left before you can add tasks." : "This becomes the home for your tasks. You own it and all your tasks under it."}
 			</p>
 			<label className="field">
 				<span>Nickname</span>
