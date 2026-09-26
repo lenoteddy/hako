@@ -1,122 +1,118 @@
-import { useState } from 'react'
-import heroImg from './assets/hero.png'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import './App.css'
+import { useCallback, useEffect, useState } from "react";
+import { useAccount } from "wagmi";
+import { sepolia } from "viem/chains";
+import { normalize } from "viem/ens";
+import { ConnectButton } from "@rainbow-me/rainbowkit";
+import Connector from "./helpers/ConnectorHelper";
+import ENS from "./helpers/ENSHelper";
+import ClaimName from "./components/ClaimName";
+import Dashboard from "./components/Dashboard";
+import { PARENT } from "./constants/config";
 
-function App() {
-  const [count, setCount] = useState(0)
+export default function App() {
+	const { address, isConnected } = useAccount();
+	const [ensAvatar, setEnsAvatar] = useState("");
+	const [account, setAccount] = useState(null);
+	const [user, setUser] = useState(null);
+	const [phase, setPhase] = useState("disconnected"); // disconnected | loading | claim | ready
+	const [error, setError] = useState("");
 
-  return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.jsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
+	const loadUser = useCallback(async (address) => {
+		setPhase("loading");
+		setError("");
+		try {
+			const found = await ENS.getUserName(address);
+			setUser(found);
+			setPhase(found?.setupComplete ? "ready" : "claim");
+		} catch (e) {
+			setError(e.shortMessage || e.message);
+			setPhase("claim");
+		}
+	}, []);
 
-      <div className="ticks"></div>
+	const clearUser = useCallback(() => {
+		setUser(null);
+		setPhase("disconnected");
+	}, []);
 
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
+	async function connect() {
+		setError("");
+		try {
+			const [address] = await Connector.wallet.requestAddresses();
+			try {
+				await Connector.wallet.switchChain({ id: sepolia.id });
+			} catch {
+				// wallet may already be on Sepolia or not support switching
+			}
+			setAccount(address);
+			loadUser(address);
+		} catch (e) {
+			setError(e.shortMessage || e.message);
+		}
+	}
 
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+	useEffect(() => {
+		if (!window.ethereum?.on) return;
+		const onAccountsChanged = (accounts) => {
+			if (!accounts.length) {
+				setAccount(null);
+				clearUser();
+				return;
+			}
+			setAccount(accounts[0]);
+			loadUser(accounts[0]);
+		};
+		window.ethereum.on("accountsChanged", onAccountsChanged);
+		return () => window.ethereum.removeListener?.("accountsChanged", onAccountsChanged);
+	}, [loadUser, clearUser]);
+
+	useEffect(() => {
+		if (isConnected && address) {
+			const loadAndSetUser = async () => {
+				await loadUser(address);
+			};
+			loadAndSetUser();
+		}
+	}, [isConnected, address, loadUser, clearUser]);
+
+	useEffect(() => {
+		const initData = async () => {
+			const avatar = await Connector.client.getEnsAvatar({ name: normalize(PARENT) });
+			setEnsAvatar(avatar);
+		};
+		initData();
+	}, []);
+
+	return (
+		<div className="app">
+			<header className="flex items-center justify-between">
+				<div>{ensAvatar ? <img src={ensAvatar} className="w-30" alt="ENS Avatar" /> : "..."}</div>
+				<div className="mx-6">
+					<ConnectButton />
+				</div>
+			</header>
+			<main className="main">
+				{phase === "disconnected" && (
+					<section className="intro">
+						<h1>Every automation gets its own name.</h1>
+						<p>
+							Hako gives you an ENS name, then keeps each recurring payment in its own box underneath it, like <strong>rent.you.{PARENT}</strong>. Anyone can read what it does. Only you
+							can change it or shut it down.
+						</p>
+						<button className="btn btn-primary" onClick={connect}>
+							Connect wallet
+						</button>
+					</section>
+				)}
+				{phase === "loading" && <p className="muted">Looking up your Hako name…</p>}
+				{phase === "claim" && <ClaimName account={account} existing={user} onDone={() => loadUser(account)} />}
+				{phase === "ready" && user && address && <Dashboard user={user} account={address} />}
+				{error && (
+					<p className="error" role="alert">
+						{error}
+					</p>
+				)}
+			</main>
+		</div>
+	);
 }
-
-export default App
