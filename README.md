@@ -72,6 +72,9 @@ The user's own name holds an index record, `hako.tasks = rent,allowance`, so any
 
 then calls `transferFrom(owner, recipient, amount)`. Deleting or pausing the name makes the payment impossible, even for Hako's own bot.
 
+**7. Recipients can be ENS names.**
+In the task form, a recipient can be entered as an ENS name (forward resolution), and a pasted address shows its primary name (reverse resolution) as a check before sending. The resolved address is what gets saved with the task, so changing where a name points later can't redirect existing payments.
+
 ---
 
 ## Architecture
@@ -181,7 +184,6 @@ node --env-file=.env worker.mjs
 ## What's next
 
 - More task types as names: token swaps / DCA, subscriptions, payroll.
-- ENS names as recipients (`bob.eth` instead of `0x…`).
 - Scoped resolver permissions so an agent can update only a task's status record.
 - Agents as namespaces: an AI agent gets its own subname and can only run the tasks delegated to it.
 
