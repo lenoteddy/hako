@@ -1,0 +1,11 @@
+{
+	"name": "hako-cron",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"start": "node --env-file=.env worker.mjs"
+	},
+	"dependencies": {
+		"viem": "^2.0.0"
+	}
+}
