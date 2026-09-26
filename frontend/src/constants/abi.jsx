@@ -36,3 +36,5 @@ export const setTextByNodeAbi = parseAbi(["function setText(bytes32 node, string
 export const setTextByNameAbi = parseAbi(["function setText(bytes name, string key, string value)"]);
 export const multicallAbi = parseAbi(["function multicall(bytes[] data) returns (bytes[])"]);
 export const unregisterAbi = parseAbi(["function unregister(uint256 anyId)"]);
+export const statusAbi = parseAbi(["function getStatus(uint256 anyId) view returns (uint8)"]);
+export const findOwnerAbi = parseAbi(["function findOwner(string label) view returns (address)"]);

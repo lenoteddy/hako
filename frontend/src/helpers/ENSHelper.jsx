@@ -32,6 +32,8 @@ import {
 	setTextByNameAbi,
 	multicallAbi,
 	unregisterAbi,
+	statusAbi,
+	findOwnerAbi,
 } from "../constants/abi";
 
 async function getAccount() {
@@ -457,21 +459,32 @@ export async function createTask(user, task, onStep = () => {}) {
 }
 
 export async function listTasks(user) {
+	const { client } = Connector;
 	const resolver = await getUserResolver(user);
 	const index = await readText(resolver, user.name, "hako.tasks");
-	console.log(index);
 	const keys = ["type", "token", "amount", "recipient", "interval", "status"];
 
-	return Promise.all(
+	const tasks = await Promise.all(
 		index
 			.split(",")
 			.filter(Boolean)
 			.map(async (label) => {
+				// The name is the source of truth: skip deleted or expired tasks
+				const owner = await client.readContract({
+					address: user.registry,
+					abi: findOwnerAbi,
+					functionName: "findOwner",
+					args: [label],
+				});
+				if (owner === zeroAddress) return null;
+
 				const name = `${label}.${user.name}`;
 				const values = await Promise.all(keys.map((k) => readText(resolver, name, `task.${k}`)));
 				return { label, name, ...Object.fromEntries(keys.map((k, i) => [k, values[i]])) };
 			}),
 	);
+
+	return tasks.filter(Boolean);
 }
 
 export async function setTaskStatus(user, taskLabel, status) {
@@ -481,24 +494,34 @@ export async function setTaskStatus(user, taskLabel, status) {
 }
 
 export async function deleteTask(user, taskLabel, onStep = () => {}) {
+	const { client } = Connector;
 	const account = await getAccount();
 	const resolver = await getUserResolver(user);
+	const anyId = BigInt(labelhash(normalize(taskLabel)));
 
-	// 1. Remove the name from ENS; Alice holds ROLE_UNREGISTER on her own registry
-	onStep(`Deleting ${taskLabel}.${user.name}…`);
-	await send({
-		account,
+	// 1. Unregister the name (skip if it's already gone). This is the step that matters.
+	const status = await client.readContract({
 		address: user.registry,
-		abi: unregisterAbi,
-		functionName: "unregister",
-		args: [BigInt(labelhash(normalize(taskLabel)))],
+		abi: statusAbi,
+		functionName: "getStatus",
+		args: [anyId],
 	});
+	if (status !== 0) {
+		onStep(`Deleting ${taskLabel}.${user.name}…`);
+		await send({ account, address: user.registry, abi: unregisterAbi, functionName: "unregister", args: [anyId] });
+	}
 
-	// 2. Remove it from the task list
-	onStep("Updating your task list…");
-	const index = await readText(resolver, user.name, "hako.tasks");
-	const remaining = index.split(",").filter((l) => l && l !== taskLabel);
-	await writeTexts(account, resolver, user.name, { "hako.tasks": remaining.join(",") });
+	// 2. Tidy the task list. Optional: if skipped, the dashboard hides the task anyway.
+	try {
+		onStep("Updating your task list…");
+		const index = await readText(resolver, user.name, "hako.tasks");
+		const remaining = index.split(",").filter((l) => l && l !== taskLabel);
+		await writeTexts(account, resolver, user.name, { "hako.tasks": remaining.join(",") });
+		return { listUpdated: true };
+	} catch (e) {
+		console.warn("Task deleted, but the list cleanup was skipped:", e);
+		return { listUpdated: false };
+	}
 }
 
 export default { ETH_REGISTRY, deployResolver, deployRegistry, setResolver, setSubregistry, grantRootRoles, getUserName, signUp, createTask, listTasks, setTaskStatus, deleteTask };
